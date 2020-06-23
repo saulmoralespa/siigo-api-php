@@ -1,0 +1,28 @@
+{
+    "name": "saulmoralespa/siigo-api-php",
+    "description": "Boilerplate package for creating other packages.",
+    "keywords": ["template", "composer", "package"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Saul Morales Pacheco",
+            "email": "info@saulmoralespa.com",
+            "homepage": "https://saulmoralespa.com",
+            "role": "Developer"
+        }
+    ],
+    "type": "library",
+    "require": {
+		"php": ">=7.1",
+        "guzzlehttp/guzzle": "^6.5"
+    },
+    "require-dev": {
+		"phpunit/phpunit": "6.*",
+        "vlucas/phpdotenv": "^4.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Siigo\\": "src/"
+        }
+    }
+}
