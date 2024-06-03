@@ -1,552 +1,316 @@
 <?php
 
-
-namespace Siigo;
+namespace Saulmoralespa\Siigo;
 
 use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Utils;
 
 class Client
 {
-    const API_TOKEN_URL = "https://siigonube.siigo.com:50050/connect/token";
-    const API_BASE_URL = "http://siigoapi.azure-api.net/siigo/api/";
+    const API_BASE_URL = "https://api.siigo.com/";
     const API_VERSION = "v1";
+    const PARTNER_ID = "saulmoralespa";
+    private static string $tokenFilePath = "token.json";
 
-    private $namePassword;
-    private $user;
-    private $password;
-    private $staticToken;
-    private $subscriptionKey;
-
-    public function __construct($namePassword, $user, $password, $staticToken, $subscriptionKey)
-    {
-
-        $this->namePassword = $namePassword;
-        $this->user = $user;
-        $this->password = $password;
-        $this->staticToken = $staticToken;
-        $this->subscriptionKey = $subscriptionKey;
+    public function __construct(
+        private $username,
+        private $accessKey
+    ) {
     }
 
-    public function client()
+    public function client(): GuzzleClient
     {
         return new GuzzleClient([
-            "base_uri" => $this->getBaseUrl()
+            "base_uri" => self::API_BASE_URL
         ]);
     }
 
     /**
-     * @return string
+     * @throws \Exception|GuzzleException
      */
-    public function getUrlToken()
+    public function getAccessToken(): string
     {
-        return self::API_TOKEN_URL;
+        if ($this->isTokenExpired()) {
+            $options = [
+                "json" => [
+                    "username" => $this->username,
+                    "access_key" => $this->accessKey
+                ]
+            ];
+            $response = $this->makeRequest("POST", "auth", $options, true);
+            $this->saveToken($response);
+        }
+
+        $data = json_decode(file_get_contents(self::$tokenFilePath), true);
+        return $data['access_token'];
     }
 
-    public function getBaseUrl()
+    /**
+     * @throws \Exception|GuzzleException
+     */
+    public function createProduct(array $data): array
     {
-        return self::API_BASE_URL . self::API_VERSION . '/';
+        return $this->makeRequest("POST", self::API_VERSION . "/products", [
+            "json" => $data
+        ]);
     }
 
-    public function getToken()
+    /**
+     * @throws \Exception|GuzzleException
+     */
+    public function getProducts(array $queries = []): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/products", [
+            "query" => $queries
+        ]);
+    }
+
+    /**
+     * @throws \Exception|GuzzleException
+     */
+    public function getProductById(string $id): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/products/$id");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function createClient(array $data): array
+    {
+        return $this->makeRequest("POST", self::API_VERSION . "/customers", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getClients(array $queries): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/customers", [
+            "query" => $queries
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getClientById(string $id): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/customers/$id");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function updateClient(string $id, array $data): array
+    {
+        return $this->makeRequest("PUT", self::API_VERSION . "/customers/$id", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function createInvoice(array $data): array
+    {
+        return $this->makeRequest("POST", self::API_VERSION . "/invoices", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function updateInvoice(string $id, array $data): array
+    {
+        return $this->makeRequest("PUT", self::API_VERSION . "/invoices/$id", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getDocumentTypes(array $queries): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/document-types", [
+            "query" => $queries
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getInvoiceById(string $id): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/invoices/$id");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function deleteInvoice(string $id): array
+    {
+        return $this->makeRequest("DELETE", self::API_VERSION . "/invoices/$id");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function annulInvoice(string $id): array
+    {
+        return $this->makeRequest("POST", self::API_VERSION . "/invoices/$id/annul");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function sendInvoiceByEmail(string $id, array $data): array
+    {
+        return $this->makeRequest("POST", self::API_VERSION . "/invoices/$id/mail", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getErrorsInvoiceReject(string $id): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/invoices/$id/stamp/errors");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getPdfInvoice(string $id): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/invoices/$id/pdf");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getUsers(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/users");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getPaymentsMethods(array $queries): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/payment-types", [
+            "query" => $queries
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getCostCenters(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/cost-centers");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getTaxes(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/taxes");
+    }
+
+    /**
+     * @throws GuzzleException
+     * @throws \Exception
+     */
+    private function makeRequest(string $method, string $uri, array $options = [], bool $auth = false): array
     {
         try {
-            $client = new GuzzleClient();
-            $request = new Request('POST', $this->getUrlToken(), [
-                'Authorization' => 'Basic ' . $this->staticToken,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-                'Accept' => 'application/json'
-            ], "grant_type=password&\nusername=$this->namePassword\\$this->user&\npassword=$this->password&\nscope=WebApi offline_access\n");
+            if (!$auth) {
+                $options["headers"] = [
+                    "Authorization" => "Bearer " . $this->getAccessToken(),
+                    "Partner-Id" => self::PARTNER_ID,
+                    "Content-Type" => "application/json"
+                ];
+            }
 
-            $response = $client->send($request);
+            $options = [
+                ...$options
+            ];
 
-            return self::responseJson($response);
-        }catch (RequestException $exception){
+            $res = $this->client()->request($method, $uri, $options);
+            $content =  $res->getBody()->getContents();
+            return self::responseArray($content);
+        } catch (RequestException $exception) {
+            $content = $exception->getResponse()->getBody()->getContents();
+            $response = self::responseArray($content);
+            $errorMessage = $this->handleErrors($response) ?? $exception->getMessage();
+            throw new \Exception($errorMessage);
+        } catch (\Exception $exception) {
             throw new \Exception($exception->getMessage());
         }
     }
 
-    public function getAccountGroupsAll()
+    public static function responseArray(string $content): array
     {
-        try{
-            $response = $this->client()->get('AccountGroups/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
+        return Utils::jsonDecode($content, true);
+    }
 
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
+    public function handleErrors(array $response): ?string
+    {
+        if ((array_key_exists('Errors', $response) &&
+                is_array($response['Errors'])) ||
+            (array_key_exists('errors', $response) &&
+                is_array($response['errors']))
+        ) {
+            $errors = $response['Errors'] ?? $response['errors'];
+
+            $arr = array_map(function ($error) {
+                return $error['Message'] ?? $error['message'];
+            }, $errors);
+
+            return implode(PHP_EOL, $arr);
+        }
+
+        return null;
+    }
+
+    /**
+     * @throws \Exception
+     */
+    private function isTokenExpired(): bool
+    {
+        if (!file_exists(self::$tokenFilePath)) {
+            return true;
+        }
+        $tokenData = json_decode(file_get_contents(self::$tokenFilePath), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new  \Exception("Failed to decode token data: " . json_last_error_msg());
+        }
+        return $tokenData['expires_at'] < time();
+    }
+
+    /**
+     * @throws \Exception
+     */
+    private static function saveToken(array $accessToken): void
+    {
+        $accessToken['expires_at'] = time() + $accessToken['expires_in'];
+        if (file_put_contents(self::$tokenFilePath, json_encode($accessToken)) === false) {
+            throw new \Exception("Failed to write token data to file.");
         }
     }
 
-    public function getAccountGroupByID($id)
+    public function setTokenFilePath(string $tokenFilePath): void
     {
-        try{
-            $response = $this->client()->get("AccountGroups/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function invoice(array $params)
-    {
-        try{
-            $response = $this->client()->post('invoice/Save', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Content-Type' => 'application/json',
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                   'namespace' =>  self::API_VERSION
-                ],
-                'json' => $params
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function createDeveloper(array $params)
-    {
-        try{
-            $response = $this->client()->post('Developers/Create', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Content-Type' => 'application/json',
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ],
-                'json' => $params
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function deleteDeveloper($id)
-    {
-        try{
-            $response = $this->client()->delete("Developers/Delete/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return $response->getStatusCode();
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getDevelopersAll()
-    {
-        try{
-            $response = $this->client()->get('Developers/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getDeveloperByID($id)
-    {
-        try{
-            $response = $this->client()->get("Developers/GetById/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function updateDeveloper(array $params)
-    {
-        try{
-            $response = $this->client()->post('Developers/update', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Content-Type' => 'application/json',
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ],
-                'json' => $params
-            ]);
-
-            return $response->getStatusCode();
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getERPDocumentTypesAll()
-    {
-        try{
-            $response = $this->client()->get('ERPDocumentTypes/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getPaymentMeansAll()
-    {
-        try{
-            $response = $this->client()->get('PaymentMeans/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getPaymentMeansByID($id)
-    {
-        try{
-            $response = $this->client()->get("PaymentMeans/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getProductListAll()
-    {
-        try{
-            $response = $this->client()->get('PriceList/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getProductListByID($id)
-    {
-        try{
-            $response = $this->client()->get("PriceList/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function createProduct(array $params)
-    {
-        try{
-            $response = $this->client()->post('Products/Create', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Content-Type' => 'application/json',
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ],
-                'json' => $params
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getProductsAll()
-    {
-        try{
-            $response = $this->client()->get('Products/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getProductByID($id)
-    {
-        try{
-            $response = $this->client()->get("Products/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getProductBalance($id)
-    {
-        try{
-            $response = $this->client()->get("Products/GetProductBalance/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getTaxesAll()
-    {
-        try{
-            $response = $this->client()->get('Taxes/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getTaxesByID($id)
-    {
-        try{
-            $response = $this->client()->get("Taxes/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getWarehousesByProductId($id)
-    {
-        try{
-            $response = $this->client()->get("Products/GetWarehousesByProductId/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getUsersAll()
-    {
-        try{
-            $response = $this->client()->get('users/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getUserByID($id)
-    {
-        try{
-            $response = $this->client()->get("users/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getWarehousesAll()
-    {
-        try{
-            $response = $this->client()->get('Warehouses/GetAll', [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION,
-                    'numberPage' => '0'
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public function getWarehouseByID($id)
-    {
-        try{
-            $response = $this->client()->get("Warehouses/GetByID/$id", [
-                'headers' => [
-                    'Authorization' => $this->getToken()->access_token,
-                    'Ocp-Apim-Subscription-Key' => $this->subscriptionKey
-                ],
-                'query' => [
-                    'namespace' =>  self::API_VERSION
-                ]
-            ]);
-
-            return self::responseJson($response);
-        }catch(RequestException $exception){
-            throw new \Exception($exception->getMessage());
-        }
-    }
-
-    public static function responseJson($response)
-    {
-        return \GuzzleHttp\json_decode(
-            $response->getBody()->getContents()
-        );
+        self::$tokenFilePath = $tokenFilePath;
     }
 }
