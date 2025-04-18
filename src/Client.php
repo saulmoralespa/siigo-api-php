@@ -78,6 +78,24 @@ class Client
     /**
      * @throws GuzzleException
      */
+    public function updateProduct(string $id, array $data): array
+    {
+        return $this->makeRequest("PUT", self::API_VERSION . "/products/$id", [
+            "json" => $data
+        ]);
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function deleteProduct(string $id): array
+    {
+        return $this->makeRequest("DELETE", self::API_VERSION . "/products/$id");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
     public function createClient(array $data): array
     {
         return $this->makeRequest("POST", self::API_VERSION . "/customers", [
@@ -136,16 +154,6 @@ class Client
     /**
      * @throws GuzzleException
      */
-    public function getDocumentTypes(array $queries): array
-    {
-        return $this->makeRequest("GET", self::API_VERSION . "/document-types", [
-            "query" => $queries
-        ]);
-    }
-
-    /**
-     * @throws GuzzleException
-     */
     public function getInvoiceById(string $id): array
     {
         return $this->makeRequest("GET", self::API_VERSION . "/invoices/$id");
@@ -196,9 +204,51 @@ class Client
     /**
      * @throws GuzzleException
      */
+    public function getAccountGroups(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/account-groups");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getTaxes(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/taxes");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getPriceLists(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/price-lists");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getWarehouses(): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/warehouses");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
     public function getUsers(): array
     {
         return $this->makeRequest("GET", self::API_VERSION . "/users");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function getDocumentTypes(array $queries): array
+    {
+        return $this->makeRequest("GET", self::API_VERSION . "/document-types", [
+            "query" => $queries
+        ]);
     }
 
     /**
@@ -222,9 +272,19 @@ class Client
     /**
      * @throws GuzzleException
      */
-    public function getTaxes(): array
+    public function getFixedAssets(): array
     {
-        return $this->makeRequest("GET", self::API_VERSION . "/taxes");
+        return $this->makeRequest("GET", self::API_VERSION . "/fixed-assets");
+    }
+
+    /**
+     * @throws GuzzleException
+     */
+    public function subscribeWebhook(array $data): array
+    {
+        return $this->makeRequest("POST", self::API_VERSION . "/webhooks", [
+            "json" => $data
+        ]);
     }
 
     /**
@@ -241,10 +301,6 @@ class Client
                     "Content-Type" => "application/json"
                 ];
             }
-
-            $options = [
-                ...$options
-            ];
 
             $res = $this->client()->request($method, $uri, $options);
             $content =  $res->getBody()->getContents();
@@ -295,7 +351,7 @@ class Client
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new  \Exception("Failed to decode token data: " . json_last_error_msg());
         }
-        return $tokenData['expires_at'] < time();
+        return $tokenData['expires_at'] <= time();
     }
 
     /**
@@ -303,14 +359,15 @@ class Client
      */
     private static function saveToken(array $accessToken): void
     {
-        $accessToken['expires_at'] = time() + $accessToken['expires_in'];
+        $accessToken['expires_at'] = time() + (86400 / 2);
         if (file_put_contents(self::$tokenFilePath, json_encode($accessToken)) === false) {
             throw new \Exception("Failed to write token data to file.");
         }
     }
 
-    public function setTokenFilePath(string $tokenFilePath): void
+    public function setTokenFilePath(string $tokenFilePath): static
     {
         self::$tokenFilePath = $tokenFilePath;
+        return $this;
     }
 }
